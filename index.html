@@ -196,7 +196,7 @@
       $('#pCard').hidden = true; $('#btnPng').disabled = true; $('#btnPost').disabled = true;
       $('#jsonErr').textContent=''; toast('Очищено')
     }
-
+} 
     function loadDemo(){
       const demo = {"proverb_uz":"Choy sovimasa, gapga shoshilma","proverb_ru":"Если чай не остыл, не спеши с разговорами","explanation":"Короткая пауза перед делом приносит ясность, как чай перед беседой.","tags":["choy","m u d r y j"]}
       $('#jsonIn').value = JSON.stringify(demo, null, 2)
