@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Proverbs • Промпт‑интерфейс без бэкенда</title>
+  <style>
+    :root{--bg:#0b0d10;--fg:#e6e9ef;--muted:#9aa3af;--acc:#41b883;--card:#14181e;--border:#1e242c;--bad:#da4453;--good:#45b97c}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+    .wrap{max-width:980px;margin:32px auto;padding:0 16px}
+    h1{font-size:28px;margin:0 0 8px} h2{font-size:18px;margin:24px 0 8px;color:var(--muted)}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+    .controls .card{flex:1 1 340px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    input[type=text],select,textarea{width:100%;background:#0e1217;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+    textarea{min-height:140px;resize:vertical}
+    .btn{display:inline-flex;align-items:center;gap:8px;background:var(--acc);color:#05130d;border:none;border-radius:10px;padding:10px 14px;font-weight:600;cursor:pointer}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn.alt{background:#2b323c;color:var(--fg)}
+    .btn.danger{background:var(--bad);color:#fff}
+    .stack{display:flex;gap:8px;flex-wrap:wrap}
+    .out{white-space:pre-wrap;background:#0e1217;border:1px solid var(--border);border-radius:10px;padding:10px}
+    .preview{display:grid;grid-template-columns:1fr;gap:10px}
+    .toast{margin-top:8px;font-size:12px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:840px){.grid{grid-template-columns:1fr}}
+    /* proverb card */
+    .p-card{background:#f5f2eb;color:#1c1c1c;border-radius:18px;padding:18px;min-height:240px}
+    .p-card h3{margin:0 0 8px;font-size:20px}
+    .p-card .uz{font-size:22px;font-weight:700}
+    .p-card .ru{font-size:18px;margin-top:6px}
+    .p-card .ex{font-size:14px;color:#3c3c3c;margin-top:8px}
+    .hr{height:1px;background:#e1ddd3;margin:10px 0}
+    .badge{display:inline-block;background:#eae6dc;color:#6a5d49;border:1px solid #d7cfbf;border-radius:999px;padding:4px 8px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI Proverbs — промпт‑приложение без бэкенда</h1>
+    <div class="row controls">
+      <div class="card">
+        <h2>Ввод</h2>
+        <label>Тема</label>
+        <input id="topic" type="text" placeholder="плов / такси / экзамен / арбуз / стартапы" />
+        <div class="grid">
+          <div>
+            <label>Стиль</label>
+            <select id="style">
+              <option value="мудрый">мудрый</option>
+              <option value="весёлый">весёлый</option>
+              <option value="поэтичный">поэтичный</option>
+            </select>
+          </div>
+          <div>
+            <label>Язык озвучки (для поста/экспорта)</label>
+            <select id="voice">
+              <option value="ru">ru</option>
+              <option value="uz">uz</option>
+            </select>
+          </div>
+        </div>
+        <div class="stack" style="margin-top:10px">
+          <button class="btn" onclick="copySystem()">Скопировать System‑роль</button>
+          <button class="btn alt" onclick="copyGuard()">Скопировать Guardrails</button>
+        </div>
+        <div class="stack" style="margin-top:8px">
+          <button class="btn" onclick="copyGen()">Скопировать промпт генерации</button>
+          <button class="btn alt" onclick="copyCheck()">Скопировать промпт проверки</button>
+          <button class="btn alt" onclick="copyRepair()">Скопировать промпт ремонта JSON</button>
+          <button class="btn alt" onclick="copyBatch()">Скопировать батч‑промпт (5 тем)</button>
+          <button class="btn alt" onclick="copyCard()">Скопировать промпт карточки</button>
+          <button class="btn danger" onclick="clearAll()">Сброс</button>
+        </div>
+        <div id="toast" class="toast"></div>
+      </div>
+
+      <div class="card">
+        <h2>Вставьте JSON</h2>
+        <label>Ответ модели (валидный JSON по схеме)</label>
+        <textarea id="jsonIn" placeholder='{"proverb_uz":"...","proverb_ru":"...","explanation":"...","tags":["тема","стиль"]}'></textarea>
+        <div class="stack" style="margin-top:8px">
+          <button class="btn" onclick="parseJSON()">Разобрать JSON → превью</button>
+          <button class="btn alt" onclick="loadDemo()">Загрузить пример</button>
+        </div>
+        <div id="jsonErr" class="toast"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Превью карточки</h2>
+      <div id="preview" class="preview">
+        <div class="p-card" id="pCard" hidden>
+          <div class="badge" id="pTopic">Тема: —</div>
+          <div class="hr"></div>
+          <div class="uz" id="pUz">—</div>
+          <div class="ru" id="pRu">—</div>
+          <div class="ex" id="pEx">—</div>
+        </div>
+        <div class="stack">
+          <button class="btn" id="btnPng" onclick="downloadPNG()" disabled>Скачать PNG</button>
+          <button class="btn alt" onclick="copyPostText()" id="btnPost" disabled>Скопировать текст поста</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Как пользоваться на хакатоне</h2>
+      <ol>
+        <li>Нажмите «Скопировать System‑роль» и «Guardrails», вставьте их в новый чат с моделью (один раз).</li>
+        <li>Введите тему и стиль, скопируйте «промпт генерации», вставьте в чат → получите JSON.</li>
+        <li>Если модель сбилась с формата — используйте «ремонт JSON» или «проверку» и повторите.</li>
+        <li>Вставьте JSON сюда, нажмите «Разобрать JSON» → увидите превью.</li>
+        <li>Скопируйте «промпт карточки» для текста поста или скачайте PNG.</li>
+        <li>Для мини‑сборника используйте «батч‑промпт (5 тем)».</li>
+      </ol>
+      <details class="toast"><summary>FAQ / отладка</summary>
+        <ul>
+          <li>Нет интернета у модели — используйте кнопку «Загрузить пример» и покажите офлайн демо.</li>
+          <li>Потеряли формат JSON — кнопка «ремонт JSON» извлечёт структуру из свободного текста.</li>
+          <li>Нужно ускориться — пропускайте проверку и сразу рендерьте карточку.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+<script>
+    const $ = sel => document.querySelector(sel)
+    const toast = msg => { const t=$('#toast'); t.textContent=msg; setTimeout(()=>t.textContent='',2200) }
+
+    const systemPrompt = `Ты — мастер народных пословиц Центральной Азии. Пиши лаконично, без пошлости, политики и оскорблений.
+Всегда возвращай СТРОГО JSON без преамбулы и комментариев.
+Структура JSON:
+{
+  "proverb_uz": "краткая пословица на узбекском (латиница), до 12 слов",
+  "proverb_ru": "краткий точный перевод на русский, до 12 слов",
+  "explanation": "1–2 предложения по-русски: почему звучит как народная мудрость",
+  "tags": ["тема","настроение/стиль"]
+}
+Если запрос невозможен или тема нарушает ограничения — верни:
+{ "error": "краткая причина" }
+Стиль: уважительно, образно, допускается лёгкий юмор.`
+
+    const guardPrompt = `ОТВЕЧАЙ ТОЛЬКО JSON. Без текста до или после. Никаких markdown‑блоков.
+Если формат сорван — сам перегенерируй ответ, пока не получится валидный JSON.`
+
+    function copyTxt(text){ navigator.clipboard.writeText(text); toast('Скопировано') }
+
+    function copySystem(){ copyTxt(systemPrompt) }
+    function copyGuard(){ copyTxt(guardPrompt) }
+
+    function copyGen(){
+      const topic = ($('#topic').value || '').trim();
+      const style = ($('#style').value || 'мудрый').trim();
+      if(!topic){ toast('Введите тему'); return }
+      const p = `Тема: "${topic}". Стиль: "${style}".\nСгенерируй одну пословицу. Помни лимиты по длине.\nВерни строго JSON по заявленной схеме.`
+      copyTxt(p)
+    }
+
+    function copyCheck(){
+      const p = `Проверь этот JSON на соответствие 4 критериям:\n1) Узбекская пословица ≤ 12 слов, естественна, без кальки.\n2) Русский перевод точный, ≤ 12 слов.\n3) Объяснение 1–2 предложения, без клише.\n4) Теги отражают тему и стиль.\nЕсли провалено — верни исправленный JSON. Иначе верни исходный JSON.\nВОТ_ОТВЕТ:\n{ ... }`
+      copyTxt(p)
+    }
+
+    function copyCard(){
+      const p = `На основе JSON ниже сформируй короткий пост:
+— Заголовок (1 строка)
+— Пословица UZ
+— Перевод RU
+— Одно лаконичное объяснение
+— 5 коротких хештегов без «#», через пробел (латиница/рус)
+Верни ПЛОСКИЙ ТЕКСТ без JSON/markdown.
+ВОТ_ОТВЕТ:
+{ ... }`
+      copyTxt(p)
+    }
+
+    function copyRepair(){
+      const p = `Оставь только валидный JSON по схеме {proverb_uz, proverb_ru, explanation, tags}.
+Извлеки смысл из текста ниже. Если данных недостаточно — верни {\"error\":\"недостаточно данных\"}.
+ТЕКСТ:
+...`
+      copyTxt(p)
+    }
+
+    function copyBatch(){
+      const topic = ($('#topic').value || 'плов').trim();
+      const style = ($('#style').value || 'мудрый').trim();
+      const topics = [topic, 'такси', 'экзамен', 'айтишник', 'дождь']
+      const p = `Сгенерируй МАССИВ из 5 объектов JSON по темам ${JSON.stringify(topics)}.
+Строгий массив JSON, без текста. Каждый объект по схеме:
+{ \"proverb_uz\":\"...\", \"proverb_ru\":\"...\", \"explanation\":\"...\", \"tags\":[\"тема\",\"${style}\"] }`
+      copyTxt(p)
+    }`
+      copyTxt(p)
+    }
+
+    function clearAll(){
+      $('#topic').value=''; $('#style').value='мудрый'; $('#jsonIn').value='';
+      $('#pCard').hidden = true; $('#btnPng').disabled = true; $('#btnPost').disabled = true;
+      $('#jsonErr').textContent=''; toast('Очищено')
+    }
+
+    function loadDemo(){
+      const demo = {"proverb_uz":"Choy sovimasa, gapga shoshilma","proverb_ru":"Если чай не остыл, не спеши с разговорами","explanation":"Короткая пауза перед делом приносит ясность, как чай перед беседой.","tags":["choy","m u d r y j"]}
+      $('#jsonIn').value = JSON.stringify(demo, null, 2)
+    }
+
+    function parseJSON(){
+      const raw = $('#jsonIn').value.trim()
+      if(!raw){ $('#jsonErr').textContent='Вставьте JSON'; return }
+      try{
+        const data = JSON.parse(raw)
+        if(data.error){ $('#jsonErr').textContent='Ошибка из модели: '+data.error; return }
+        const uz = (data.proverb_uz||'').toString();
+        const ru = (data.proverb_ru||'').toString();
+        const ex = (data.explanation||'').toString();
+        const topic = ($('#topic').value||'без темы').toString();
+        if(!uz || !ru){ $('#jsonErr').textContent='Нужны поля proverb_uz и proverb_ru'; return }
+        $('#jsonErr').textContent=''
+        $('#pTopic').textContent = 'Тема: '+topic
+        $('#pUz').textContent = uz
+        $('#pRu').textContent = ru
+        $('#pEx').textContent = ex
+        $('#pCard').hidden = false
+        $('#btnPng').disabled = false
+        $('#btnPost').disabled = false
+        toast('JSON принят')
+      }catch(e){
+        $('#jsonErr').textContent = 'Ошибка парсинга JSON: '+e.message
+      }
+    }
+
+    function copyPostText(){
+      const uz = $('#pUz').textContent.trim()
+      const ru = $('#pRu').textContent.trim()
+      const ex = $('#pEx').textContent.trim()
+      const topic = $('#pTopic').textContent.replace('Тема: ','').trim()
+      const txt = `AI Proverbs — ${topic}\n\nUZ: ${uz}\nRU: ${ru}\n\n${ex}\n\nproverbs uzbek wisdom народ мудрость ai`
+      copyTxt(txt)
+    }
+
+    function downloadPNG(){
+      // Рендерим простую карточку на Canvas и сохраняем как PNG
+      const uz = $('#pUz').textContent.trim()
+      const ru = $('#pRu').textContent.trim()
+      const ex = $('#pEx').textContent.trim()
+      const topic = $('#pTopic').textContent.trim()
+
+      const W=1080,H=1080; const pad=64
+      const cnv = document.createElement('canvas'); cnv.width=W; cnv.height=H
+      const ctx = cnv.getContext('2d')
+
+      // фон
+      ctx.fillStyle = '#f5f2eb'; ctx.fillRect(0,0,W,H)
+      // заголовок
+      ctx.fillStyle = '#1c1c1c'; ctx.font = 'bold 40px Inter, Arial'; ctx.fillText(topic, pad, pad+10)
+      // разделитель
+      ctx.fillStyle = '#d7cfbf'; ctx.fillRect(pad, pad+28, W-2*pad, 2)
+
+      // функции переноса
+      function wrap(text, maxWidth, font){
+        ctx.font = font; ctx.fillStyle = '#1c1c1c'
+        const words = text.split(/\s+/); const lines=[]; let line=''
+        for(const w of words){
+          const test = line ? line+' '+w : w
+          if(ctx.measureText(test).width > maxWidth){
+            if(line) lines.push(line); line=w
+          } else { line=test }
+        }
+        if(line) lines.push(line)
+        return lines
+      }
+
+      let y = pad+80
+      const maxW = W-2*pad
+      ctx.font='700 48px Inter, Arial'; ctx.fillStyle='#111';
+      for(const L of wrap(uz, maxW, '700 48px Inter, Arial')){ ctx.fillText(L, pad, y); y+=56 }
+      y+=10
+      ctx.font='500 36px Inter, Arial'; ctx.fillStyle='#222';
+      for(const L of wrap(ru, maxW, '500 36px Inter, Arial')){ ctx.fillText(L, pad, y); y+=44 }
+      y+=12
+      ctx.font='400 28px Inter, Arial'; ctx.fillStyle='#444';
+      for(const L of wrap(ex, maxW, '400 28px Inter, Arial')){ ctx.fillText(L, pad, y); y+=36 }
+
+      // футер
+      const footer = 'AI Proverbs • zero‑backend demo'
+      ctx.font='400 24px Inter, Arial'; ctx.fillStyle='#666'
+      const w = ctx.measureText(footer).width
+      ctx.fillText(footer, (W-w)/2, H-40)
+
+      const url = cnv.toDataURL('image/png')
+      const a = document.createElement('a'); a.href=url; a.download='proverb_card.png'; a.click()
+    }
+  </script>
+</body>
+</html>
