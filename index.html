@@ -49,7 +49,7 @@
         </div>
 
         <div class="hint">
-          Генерация через OpenAI API напрямую. Ключ в коде (для демо).
+          Генерация текста идёт через серверless-функцию (HuggingFace Inference). Ключи не попадают в браузер.
         </div>
 
         <label>Поговорка (ручной ввод/правка)</label>
@@ -67,9 +67,6 @@
   </div>
 
   <script>
-    // === ВСТАВЛЕННЫЙ КЛЮЧ OpenAI (НЕБЕЗОПАСНО для боевого использования)
-    const OPENAI_KEY = "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";
-
     const topicEl = document.getElementById('topic');
     const styleEl = document.getElementById('style');
     const langEl = document.getElementById('lang');
@@ -78,6 +75,7 @@
     const dlBtn = document.getElementById('dl');
     const refreshBtn = document.getElementById('refresh');
     const msg = document.getElementById('msg');
+
     const canvas = document.getElementById('card');
     const ctx = canvas.getContext('2d');
 
@@ -109,18 +107,25 @@
     function drawCard(){
       const W = canvas.width, H = canvas.height;
       const proverb = (proverbEl.value || '').trim();
+
       gradientBackground();
+
+      // заголовок
       ctx.fillStyle = '#c2e7ff';
       ctx.font = '700 48px Inter, Arial';
       ctx.textAlign = 'center';
       const topic = (topicEl.value || 'Тема').trim();
       ctx.fillText(`Тема: ${topic}`, W/2, 140);
+
+      // поговорка
       ctx.fillStyle = '#ffffff';
       ctx.font = '800 72px Inter, Arial';
       const maxWidth = W - 200;
       const lines = wrapText(ctx, proverb || '…ожидается поговорка…', maxWidth);
       let y = 360, lineHeight = 90;
       lines.forEach(line => { ctx.fillText(line, W/2, y); y += lineHeight; });
+
+      // подпись
       ctx.fillStyle = '#9aa3b2';
       ctx.font = '600 34px Inter, Arial';
       ctx.fillText('AIProverb', W/2, H - 80);
@@ -132,40 +137,27 @@
       const lang = langEl.value || 'ru';
       setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true;
 
-      try {
-        const systemMsg = "Ты создаёшь очень короткие народные поговорки. Без политики и оскорблений. До 12 слов.";
-        const userMsg = `Тема: "${topic}". Стиль: "${style}". Язык ответа: ${lang}.
-Верни только одну поговорку одной строкой, без кавычек и комментариев.`;
-
-        const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${OPENAI_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            temperature: 0.9,
-            messages: [
-              { role: "system", content: systemMsg },
-              { role: "user", content: userMsg }
-            ]
-          })
+      try{
+        const resp = await fetch('/.netlify/functions/generate', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ topic, style, lang })
         });
 
+        const txt = await resp.text();
+        let data = {};
+        try { data = JSON.parse(txt); } catch(_) {}
+
         if (!resp.ok) {
-          throw new Error(await resp.text());
+          const hint = data?.details || txt || 'unknown';
+          throw new Error(hint);
         }
 
-        const data = await resp.json();
-        proverbEl.value = (data?.choices?.[0]?.message?.content || "")
-          .trim()
-          .replace(/^["'«»]+|["'«»]+$/g, "");
-
+        const p = (data?.proverb || '').trim().replace(/^["'«»]+|["'«»]+$/g, "");
+        proverbEl.value = p;
         drawCard();
-        dlBtn.disabled = false;
-        setMsg('');
-      } catch(e) {
+        dlBtn.disabled = false; setMsg('');
+      } catch(e){
         setMsg('Ошибка: ' + String(e) + '\nМожно вписать поговорку вручную и нажать «Обновить превью».');
         drawCard();
       } finally {
@@ -175,13 +167,12 @@
 
     genBtn.addEventListener('click', generate);
     refreshBtn.addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
-    dlBtn.addEventListener('click', ()=>{
+    document.getElementById('dl').addEventListener('click', ()=>{
       const url = canvas.toDataURL('image/png');
       const a = document.createElement('a'); a.href = url; a.download = 'aiproverb.png'; a.click();
     });
 
-    gradientBackground();
-    drawCard();
+    gradientBackground(); drawCard();
   </script>
 </body>
 </html>
