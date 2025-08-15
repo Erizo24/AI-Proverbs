@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>AIProverb — картинка из поговорки</title>
+  <title>Sohib Ai — генератор поговорок и карточек</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   <style>
     :root { --bg:#0f1115; --panel:#181b22; --text:#e6e9ef; --muted:#9aa3b2; --accent:#22c55e; }
@@ -23,7 +23,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>AIProverb — генератор поговорки и картинки</h1>
+    <h1>Sohib Ai — генератор поговорок и карточек</h1>
     <div class="grid">
       <div class="card">
         <label>Тема</label>
@@ -49,7 +49,7 @@
         </div>
 
         <div class="hint">
-          Генерация текста идёт через серверless-функцию (HuggingFace Inference). Ключи не попадают в браузер.
+          Текст генерируется через serverless-функцию (HuggingFace Inference). Ключи не попадают в браузер.
         </div>
 
         <label>Поговорка (ручной ввод/правка)</label>
@@ -67,6 +67,8 @@
   </div>
 
   <script>
+    const BRAND = "Sohib Ai";
+
     const topicEl = document.getElementById('topic');
     const styleEl = document.getElementById('style');
     const langEl = document.getElementById('lang');
@@ -110,14 +112,12 @@
 
       gradientBackground();
 
-      // заголовок
       ctx.fillStyle = '#c2e7ff';
       ctx.font = '700 48px Inter, Arial';
       ctx.textAlign = 'center';
       const topic = (topicEl.value || 'Тема').trim();
       ctx.fillText(`Тема: ${topic}`, W/2, 140);
 
-      // поговорка
       ctx.fillStyle = '#ffffff';
       ctx.font = '800 72px Inter, Arial';
       const maxWidth = W - 200;
@@ -125,10 +125,9 @@
       let y = 360, lineHeight = 90;
       lines.forEach(line => { ctx.fillText(line, W/2, y); y += lineHeight; });
 
-      // подпись
       ctx.fillStyle = '#9aa3b2';
       ctx.font = '600 34px Inter, Arial';
-      ctx.fillText('AIProverb', W/2, H - 80);
+      ctx.fillText(BRAND, W/2, H - 80);
     }
 
     async function generate(){
@@ -169,7 +168,7 @@
     refreshBtn.addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
     document.getElementById('dl').addEventListener('click', ()=>{
       const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a'); a.href = url; a.download = 'aiproverb.png'; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = 'sohib-ai.png'; a.click();
     });
 
     gradientBackground(); drawCard();
