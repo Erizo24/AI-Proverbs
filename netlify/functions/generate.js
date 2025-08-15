@@ -1,3 +1,5 @@
+// Ключ Hugging Face хранится как переменная окружения HF_TOKEN (Site settings → Environment variables)
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
@@ -39,10 +41,14 @@ exports.handler = async (event) => {
         "Authorization": `Bearer ${hf}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 32, temperature: 0.9 } })
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: { max_new_tokens: 32, temperature: 0.9 }
+      })
     });
 
     const txt = await resp.text();
+
     if (!resp.ok) {
       return {
         statusCode: 500,
