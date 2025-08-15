@@ -48,7 +48,10 @@
           <button id="dl" disabled>Скачать PNG</button>
         </div>
 
-        <div class="hint">Если ИИ недоступен — впиши поговорку вручную и нажми «Обновить превью».</div>
+        <div class="hint">
+          Если провайдер ИИ недоступен — впиши поговорку вручную и нажми «Обновить превью».
+          Текст генерируется через OpenAI, при исчерпании квоты автоматически используется HuggingFace.
+        </div>
 
         <label>Поговорка (ручной ввод/правка)</label>
         <textarea id="proverb" placeholder="сюда можно вставить/исправить текст поговорки"></textarea>
@@ -76,7 +79,7 @@
 
     const canvas = document.getElementById('card');
     const ctx = canvas.getContext('2d');
-    let bgImg = null;
+    let bgImg = null; // на будущее; сейчас фон — градиент
 
     function setMsg(t){ msg.textContent = t || ""; }
 
@@ -86,7 +89,6 @@
       g.addColorStop(0, '#0ea5e9'); g.addColorStop(1, '#22c55e');
       ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
-      // скругление рамки
       ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 12;
       ctx.strokeRect(24,24,W-48,H-48);
     }
@@ -107,18 +109,9 @@
     function drawCard(){
       const W = canvas.width, H = canvas.height;
       const proverb = (proverbEl.value || '').trim();
-      // фон
-      if (bgImg && bgImg.complete) {
-        const ratio = Math.max(W / bgImg.width, H / bgImg.height);
-        const newW = bgImg.width * ratio;
-        const newH = bgImg.height * ratio;
-        const dx = (W - newW) / 2;
-        const dy = (H - newH) / 2;
-        ctx.drawImage(bgImg, dx, dy, newW, newH);
-        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
-      } else {
-        gradientBackground();
-      }
+
+      // фон (сейчас всегда градиент — надёжно и бесплатно)
+      gradientBackground();
 
       // заголовок
       ctx.fillStyle = '#c2e7ff';
@@ -145,7 +138,7 @@
       const topic = (topicEl.value || 'плов').trim();
       const style = styleEl.value || 'мудрый';
       const lang = langEl.value || 'ru';
-      setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true; bgImg = null;
+      setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true;
 
       try{
         const resp = await fetch('/.netlify/functions/generate', {
@@ -157,26 +150,18 @@
         const txt = await resp.text();
         let data = {};
         try { data = JSON.parse(txt); } catch(_) {}
+
         if (!resp.ok) {
           const hint = data?.details || txt || 'unknown';
           throw new Error(hint);
         }
 
-        // текст
         proverbEl.value = (data?.proverb || '').trim().replace(/^["'«»]+|["'«»]+$/g, "");
-
-        // фон
-        if (data?.image_url){
-          await new Promise((resolve) => {
-            bgImg = new Image(); bgImg.crossOrigin = 'anonymous';
-            bgImg.onload = resolve; bgImg.onerror = ()=>{ bgImg=null; resolve(); };
-            bgImg.src = data.image_url;
-          });
-        }
-        drawCard(); dlBtn.disabled = false; setMsg('');
+        drawCard();
+        dlBtn.disabled = false; setMsg('');
       } catch(e){
         setMsg('Ошибка: ' + String(e) + '\nМожно вписать поговорку вручную и нажать «Обновить превью».');
-        bgImg = null; drawCard();
+        drawCard();
       } finally {
         genBtn.disabled = false;
       }
