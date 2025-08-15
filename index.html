@@ -49,8 +49,7 @@
         </div>
 
         <div class="hint">
-          Если провайдер ИИ недоступен — впиши поговорку вручную и нажми «Обновить превью».
-          Текст генерируется через OpenAI, при исчерпании квоты автоматически используется HuggingFace.
+          Генерация текста идёт через HuggingFace Inference. Если сервис занят — впиши поговорку вручную и нажми «Обновить превью».
         </div>
 
         <label>Поговорка (ручной ввод/правка)</label>
@@ -79,7 +78,6 @@
 
     const canvas = document.getElementById('card');
     const ctx = canvas.getContext('2d');
-    let bgImg = null; // на будущее; сейчас фон — градиент
 
     function setMsg(t){ msg.textContent = t || ""; }
 
@@ -110,7 +108,6 @@
       const W = canvas.width, H = canvas.height;
       const proverb = (proverbEl.value || '').trim();
 
-      // фон (сейчас всегда градиент — надёжно и бесплатно)
       gradientBackground();
 
       // заголовок
@@ -167,14 +164,13 @@
       }
     }
 
-    genBtn.addEventListener('click', generate);
-    refreshBtn.addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
-    dlBtn.addEventListener('click', ()=>{
+    document.getElementById('gen').addEventListener('click', generate);
+    document.getElementById('refresh').addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
+    document.getElementById('dl').addEventListener('click', ()=>{
       const url = canvas.toDataURL('image/png');
       const a = document.createElement('a'); a.href = url; a.download = 'aiproverb.png'; a.click();
     });
 
-    // первичное превью
     gradientBackground(); drawCard();
   </script>
 </body>
