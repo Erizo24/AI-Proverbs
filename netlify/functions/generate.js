@@ -1,4 +1,7 @@
 // netlify/functions/generate.js
+// Текст: сначала OpenAI, при любой проблеме — фолбэк на Hugging Face.
+// Картинку не запрашиваем — фронт рисует градиент (надёжно для демо).
+
 export default async (req) => {
   try {
     if (req.method !== "POST") {
@@ -7,109 +10,118 @@ export default async (req) => {
 
     const { topic = "плов", style = "мудрый", lang = "ru" } = await req.json();
 
-    // ===== 1) Сначала пробуем OpenAI для текста =====
+    const systemMsg = "Ты создаёшь очень короткие народные поговорки. Без политики и оскорблений. До 12 слов.";
+    const userMsg = `Тема: "${topic}". Стиль: "${style}". Язык ответа: ${lang}.
+Верни только одну поговорку одной строкой, без кавычек и комментариев.`;
+
     let proverb = null;
     let openAiErr = null;
 
+    // ===== 1) Пытаемся через OpenAI (если есть ключ)
     const oaiKey = process.env.OPENAI_API_KEY;
     if (oaiKey) {
       try {
-        const sys = `Ты создаёшь очень короткие народные поговорки. Без политики и оскорблений. До 12 слов.`;
-        const user = `Тема: "${topic}". Стиль: "${style}". Язык ответа: ${lang}.
-Верни только одну поговорку одной строкой, без кавычек и комментариев.`;
+        // Несколько моделей на случай, если одна недоступна
+        const models = ["gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-3.5-turbo"];
+        let ok = false, lastRaw = null;
 
-        const modelsToTry = ["gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-3.5-turbo"];
-        let chatData = null, lastTxt = null;
-
-        for (const m of modelsToTry) {
-          const chatResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        for (const model of models) {
+          const resp = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${oaiKey}`, "Content-Type": "application/json" },
+            headers: {
+              "Authorization": `Bearer ${oaiKey}`,
+              "Content-Type": "application/json"
+            },
             body: JSON.stringify({
-              model: m,
+              model,
               temperature: 0.9,
               messages: [
-                { role: "system", content: sys },
-                { role: "user", content: user }
+                { role: "system", content: systemMsg },
+                { role: "user", content: userMsg }
               ]
             })
           });
-          const raw = await chatResp.text();
-          lastTxt = raw;
-          if (chatResp.ok) {
-            chatData = JSON.parse(raw);
+
+          const raw = await resp.text();
+          lastRaw = raw;
+
+          if (resp.ok) {
+            const data = JSON.parse(raw);
+            proverb = (data?.choices?.[0]?.message?.content || "").trim().replace(/^["'«»]+|["'«»]+$/g, "");
+            ok = true;
             break;
+          } else {
+            // если квота кончилась — сразу уходим на фолбэк
+            if (raw.includes("insufficient_quota")) {
+              openAiErr = "OpenAI insufficient_quota";
+              break;
+            }
           }
         }
 
-        if (chatData) {
-          proverb = (chatData?.choices?.[0]?.message?.content || "").trim();
-          // убираем кавычки, если вдруг модель вернёт
-          proverb = proverb.replace(/^["'«»]+|["'«»]+$/g, "");
-        } else {
-          openAiErr = "OpenAI chat failed. " + (lastTxt || "");
+        if (!ok && !openAiErr) {
+          openAiErr = "OpenAI chat failed. " + (lastRaw || "");
         }
       } catch (e) {
-        openAiErr = "OpenAI chat exception: " + String(e);
+        openAiErr = "OpenAI exception: " + String(e);
       }
     } else {
       openAiErr = "Missing OPENAI_API_KEY";
     }
 
-    // ===== 2) Если OpenAI-текст не получился — фолбэк на HuggingFace =====
+    // ===== 2) Если поговорку не получили — фолбэк HuggingFace (если есть токен)
     if (!proverb) {
       const hf = process.env.HF_TOKEN;
       if (!hf) {
-        // нет и фолбэка — вернём ошибку, фронт даст ввести вручную
+        // Нет фолбэка — возвращаем ошибку (фронт позволит ввести вручную)
         return new Response(JSON.stringify({
           error: "LLM chat error",
-          details: openAiErr || "No text provider available (set OPENAI_API_KEY or HF_TOKEN)"
-        }), { status: 500 });
+          details: openAiErr || "No providers available (set OPENAI_API_KEY or HF_TOKEN)"
+        }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
 
       try {
         const prompt = `Придумай одну очень короткую народную пословицу. Тема: "${topic}". Стиль: "${style}". Язык: ${lang}. До 12 слов. Без политики и оскорблений. Верни только пословицу.`;
+
+        // Модель можно поменять на любую доступную текстовую инструктивную
         const resp = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${hf}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 32, temperature: 0.9 } })
+          headers: {
+            "Authorization": `Bearer ${hf}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            inputs: prompt,
+            parameters: { max_new_tokens: 32, temperature: 0.9 }
+          })
         });
+
         const txt = await resp.text();
         if (!resp.ok) {
-          return new Response(JSON.stringify({ error: "HF error", details: txt }), { status: 500 });
+          return new Response(JSON.stringify({ error: "HF error", details: txt }), {
+            status: 500, headers: { "Content-Type": "application/json" }
+          });
         }
+
         let out;
         try { out = JSON.parse(txt); } catch { out = txt; }
         const raw = Array.isArray(out) ? (out[0]?.generated_text || "") : (out?.generated_text || out || "");
         proverb = String(raw).split("\n").pop().trim().replace(/^["'«»]+|["'«»]+$/g, "");
       } catch (e) {
-        return new Response(JSON.stringify({ error: "HF exception", details: String(e) }), { status: 500 });
+        return new Response(JSON.stringify({ error: "HF exception", details: String(e) }), {
+          status: 500, headers: { "Content-Type": "application/json" }
+        });
       }
     }
 
-    // ===== 3) Попробуем OpenAI Images для фона (необязательно) =====
-    let image_url = null;
-    if (oaiKey) {
-      try {
-        const imgPrompt = `Create a clean, high-quality background image that reflects the theme "${topic}" in a ${style} mood. 
-No text, no watermarks, no people faces close-up. Soft lighting, composition suitable for a poster background.`;
-        const imgResp = await fetch("https://api.openai.com/v1/images/generations", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${oaiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: imgPrompt, size: "1024x1024", n: 1 })
-        });
-        if (imgResp.ok) {
-          const imgData = await imgResp.json();
-          image_url = imgData?.data?.[0]?.url || null;
-        }
-        // если не ок — спокойно вернем null, фронт нарисует градиент
-      } catch (_) { /* тихий фолбэк */ }
-    }
-
-    return new Response(JSON.stringify({ proverb, image_url }), {
+    // ===== 3) Возвращаем результат (без image_url — фон делает фронт)
+    return new Response(JSON.stringify({ proverb, image_url: null }), {
       headers: { "Content-Type": "application/json" }
     });
+
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Server error", details: String(err) }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Server error", details: String(err) }), {
+      status: 500, headers: { "Content-Type": "application/json" }
+    });
   }
 };
