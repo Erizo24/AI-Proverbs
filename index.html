@@ -49,7 +49,7 @@
         </div>
 
         <div class="hint">
-          Генерация через HuggingFace. Токен хранится в коде (для хакатона допустимо).
+          Генерация через OpenAI API напрямую. Ключ в коде (для демо).
         </div>
 
         <label>Поговорка (ручной ввод/правка)</label>
@@ -67,8 +67,8 @@
   </div>
 
   <script>
-    // ВСТАВЬ СВОЙ ТОКЕН HF
-    const HF_TOKEN = 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;
+    // === ВСТАВЛЕННЫЙ КЛЮЧ OpenAI (НЕБЕЗОПАСНО для боевого использования)
+    const OPENAI_KEY = "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";
 
     const topicEl = document.getElementById('topic');
     const styleEl = document.getElementById('style');
@@ -133,17 +133,24 @@
       setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true;
 
       try {
-        const prompt = `Придумай одну очень короткую народную пословицу.
-Тема: "${topic}". Стиль: "${style}". Язык: ${lang}.
-До 12 слов. Без политики и оскорблений. Верни только пословицу.`;
+        const systemMsg = "Ты создаёшь очень короткие народные поговорки. Без политики и оскорблений. До 12 слов.";
+        const userMsg = `Тема: "${topic}". Стиль: "${style}". Язык ответа: ${lang}.
+Верни только одну поговорку одной строкой, без кавычек и комментариев.`;
 
-        const resp = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
+        const resp = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${HF_TOKEN}`,
+            "Authorization": `Bearer ${OPENAI_KEY}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 32, temperature: 0.9 } })
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            temperature: 0.9,
+            messages: [
+              { role: "system", content: systemMsg },
+              { role: "user", content: userMsg }
+            ]
+          })
         });
 
         if (!resp.ok) {
@@ -151,8 +158,9 @@
         }
 
         const data = await resp.json();
-        let raw = Array.isArray(data) ? (data[0]?.generated_text || "") : (data?.generated_text || "");
-        proverbEl.value = String(raw).split("\n").pop().trim().replace(/^["'«»]+|["'«»]+$/g, "");
+        proverbEl.value = (data?.choices?.[0]?.message?.content || "")
+          .trim()
+          .replace(/^["'«»]+|["'«»]+$/g, "");
 
         drawCard();
         dlBtn.disabled = false;
@@ -177,7 +185,3 @@
   </script>
 </body>
 </html>
-
-
-
-
