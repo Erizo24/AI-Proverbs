@@ -1,11 +1,14 @@
 // netlify/functions/generate.js
-// Единственный провайдер: Hugging Face Inference API.
-// Требуется переменная окружения HF_TOKEN (https://huggingface.co/settings/tokens)
+// Провайдер: Hugging Face Inference API (только текст).
+// Храните токен в переменной окружения HF_TOKEN на Netlify.
+// Не требует OpenAI и не светит ключ в браузер.
 
 export default async (req) => {
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Use POST" }), { status: 405 });
+      return new Response(JSON.stringify({ error: "Use POST" }), {
+        status: 405, headers: { "Content-Type": "application/json" }
+      });
     }
 
     const hf = process.env.HF_TOKEN;
@@ -15,15 +18,20 @@ export default async (req) => {
       });
     }
 
-    const { topic = "плов", style = "мудрый", lang = "ru" } = await req.json();
+    let body;
+    try { body = await req.json(); }
+    catch { body = {}; }
+
+    const topic = (body?.topic ?? "плов").toString().slice(0, 120);
+    const style = (body?.style ?? "мудрый").toString().slice(0, 50);
+    const lang  = (body?.lang  ?? "ru").toString().slice(0, 8);
 
     const prompt =
 `Придумай одну очень короткую народную пословицу.
 Тема: "${topic}". Стиль: "${style}". Язык: ${lang}.
 До 12 слов. Без политики и оскорблений. Верни только пословицу.`;
 
-    // Можно заменить модель на другую инструктивную, если захочешь
-    const resp = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
+    const r = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${hf}`,
@@ -35,25 +43,22 @@ export default async (req) => {
       })
     });
 
-    const txt = await resp.text();
-    if (!resp.ok) {
+    const txt = await r.text();
+
+    if (!r.ok) {
+      // отдадим наружу «как есть» для быстрой диагностики
       return new Response(JSON.stringify({ error: "HF error", details: txt }), {
         status: 500, headers: { "Content-Type": "application/json" }
       });
     }
 
+    // возможные форматы ответа: массив [{ generated_text }], либо объект { generated_text }
     let out;
     try { out = JSON.parse(txt); } catch { out = txt; }
+    const raw = Array.isArray(out) ? (out[0]?.generated_text || "") : (out?.generated_text || out || "");
+    const proverb = String(raw).split("\n").pop().trim().replace(/^["'«»]+|["'«»]+$/g, "");
 
-    const raw = Array.isArray(out)
-      ? (out[0]?.generated_text || "")
-      : (out?.generated_text || out || "");
-
-    const proverb = String(raw)
-      .split("\n").pop().trim()
-      .replace(/^["'«»]+|["'«»]+$/g, "");
-
-    return new Response(JSON.stringify({ proverb, image_url: null }), {
+    return new Response(JSON.stringify({ proverb }), {
       headers: { "Content-Type": "application/json" }
     });
 
