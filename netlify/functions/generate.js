@@ -1,6 +1,3 @@
-// netlify/functions/generate.js
-// Ключ Hugging Face берём из переменной окружения HF_TOKEN (Site settings → Environment variables)
-
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') {
@@ -13,7 +10,6 @@ exports.handler = async (event) => {
 
     const hf = process.env.HF_TOKEN;
     if (!hf) {
-      // Диагностика окружения (без секрета)
       return {
         statusCode: 500,
         headers: { "Content-Type": "application/json" },
@@ -37,21 +33,16 @@ exports.handler = async (event) => {
 Тема: "${topic}". Стиль: "${style}". Язык: ${lang}.
 До 12 слов. Без политики и оскорблений. Верни только пословицу.`;
 
-    // В Node 18+ fetch доступен из коробки
     const resp = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${hf}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: { max_new_tokens: 32, temperature: 0.9 }
-      })
+      body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 32, temperature: 0.9 } })
     });
 
     const txt = await resp.text();
-
     if (!resp.ok) {
       return {
         statusCode: 500,
@@ -62,7 +53,6 @@ exports.handler = async (event) => {
 
     let out;
     try { out = JSON.parse(txt); } catch { out = txt; }
-
     const raw = Array.isArray(out) ? (out[0]?.generated_text || "") : (out?.generated_text || out || "");
     const proverb = String(raw).split("\n").pop().trim().replace(/^["'«»]+|["'«»]+$/g, "");
 
