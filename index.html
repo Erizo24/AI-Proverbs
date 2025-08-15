@@ -16,9 +16,8 @@
     input,select,button,textarea{ width:100%; border:1px solid #2a2f3a; background:#0f131a; color:var(--text); border-radius:8px; padding:10px 12px; font:inherit }
     button{ cursor:pointer } button.primary{ background:var(--accent); color:#06150b; border-color:transparent; font-weight:700 }
     .row{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap }
-    .hint{ color:var(--muted); font-size:12px; margin-top:8px }
+    .hint{ color:var(--muted); font-size:12px; margin-top:8px; white-space:pre-wrap }
     canvas{ width:100%; max-width:480px; height:auto; display:block; background:#000; border-radius:12px }
-    .loader{ font-size:12px; color:var(--muted) }
     @media (max-width:860px){ .grid{ grid-template-columns:1fr } }
   </style>
 </head>
@@ -28,7 +27,7 @@
     <div class="grid">
       <div class="card">
         <label>Тема</label>
-        <input id="topic" placeholder="например: кот и работа" autofocus>
+        <input id="topic" placeholder="например: кот и робот" autofocus>
 
         <label>Стиль</label>
         <select id="style">
@@ -49,15 +48,11 @@
           <button id="dl" disabled>Скачать PNG</button>
         </div>
 
-        <div class="hint">
-          Если ИИ недоступен — впиши поговорку вручную и нажми «Обновить превью».
-        </div>
+        <div class="hint">Если ИИ недоступен — впиши поговорку вручную и нажми «Обновить превью».</div>
 
         <label>Поговорка (ручной ввод/правка)</label>
         <textarea id="proverb" placeholder="сюда можно вставить/исправить текст поговорки"></textarea>
-        <div class="row">
-          <button id="refresh">Обновить превью</button>
-        </div>
+        <div class="row"><button id="refresh">Обновить превью</button></div>
 
         <div id="msg" class="hint"></div>
       </div>
@@ -81,10 +76,9 @@
 
     const canvas = document.getElementById('card');
     const ctx = canvas.getContext('2d');
+    let bgImg = null;
 
-    let bgImg = null; // фон от ИИ
-
-    function setMsg(t){ msg.textContent = t || "" }
+    function setMsg(t){ msg.textContent = t || ""; }
 
     function gradientBackground(){
       const W=canvas.width, H=canvas.height;
@@ -92,44 +86,9 @@
       g.addColorStop(0, '#0ea5e9'); g.addColorStop(1, '#22c55e');
       ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
-    }
-
-    function drawCard(){
-      const W = canvas.width, H = canvas.height;
-      const proverb = (proverbEl.value || '').trim();
-      // фон
-      if (bgImg && bgImg.complete) {
-        // заполним фон картинкой по высоте (crop по ширине)
-        const ratio = Math.max(W / bgImg.width, H / bgImg.height);
-        const newW = bgImg.width * ratio;
-        const newH = bgImg.height * ratio;
-        const dx = (W - newW) / 2;
-        const dy = (H - newH) / 2;
-        ctx.drawImage(bgImg, dx, dy, newW, newH);
-        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
-      } else {
-        gradientBackground();
-      }
-
-      // заголовок (тема)
-      ctx.fillStyle = '#c2e7ff';
-      ctx.font = '700 48px Inter, Arial';
-      ctx.textAlign = 'center';
-      const topic = (topicEl.value || 'Тема').trim();
-      ctx.fillText(`Тема: ${topic}`, W/2, 140);
-
-      // текст поговорки
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '800 72px Inter, Arial';
-      const maxWidth = W - 200;
-      const lines = wrapText(ctx, proverb || '…ожидается поговорка…', maxWidth);
-      let y = 360, lineHeight = 90;
-      lines.forEach(line => { ctx.fillText(line, W/2, y); y += lineHeight; });
-
-      // подпись
-      ctx.fillStyle = '#9aa3b2';
-      ctx.font = '600 34px Inter, Arial';
-      ctx.fillText('AIProverb', W/2, H - 80);
+      // скругление рамки
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 12;
+      ctx.strokeRect(24,24,W-48,H-48);
     }
 
     function wrapText(ctx, text, maxWidth){
@@ -145,12 +104,48 @@
       return lines.slice(0,6);
     }
 
+    function drawCard(){
+      const W = canvas.width, H = canvas.height;
+      const proverb = (proverbEl.value || '').trim();
+      // фон
+      if (bgImg && bgImg.complete) {
+        const ratio = Math.max(W / bgImg.width, H / bgImg.height);
+        const newW = bgImg.width * ratio;
+        const newH = bgImg.height * ratio;
+        const dx = (W - newW) / 2;
+        const dy = (H - newH) / 2;
+        ctx.drawImage(bgImg, dx, dy, newW, newH);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
+      } else {
+        gradientBackground();
+      }
+
+      // заголовок
+      ctx.fillStyle = '#c2e7ff';
+      ctx.font = '700 48px Inter, Arial';
+      ctx.textAlign = 'center';
+      const topic = (topicEl.value || 'Тема').trim();
+      ctx.fillText(`Тема: ${topic}`, W/2, 140);
+
+      // поговорка
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 72px Inter, Arial';
+      const maxWidth = W - 200;
+      const lines = wrapText(ctx, proverb || '…ожидается поговорка…', maxWidth);
+      let y = 360, lineHeight = 90;
+      lines.forEach(line => { ctx.fillText(line, W/2, y); y += lineHeight; });
+
+      // подпись
+      ctx.fillStyle = '#9aa3b2';
+      ctx.font = '600 34px Inter, Arial';
+      ctx.fillText('AIProverb', W/2, H - 80);
+    }
+
     async function generate(){
       const topic = (topicEl.value || 'плов').trim();
       const style = styleEl.value || 'мудрый';
       const lang = langEl.value || 'ru';
-      setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true;
-      bgImg = null;
+      setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true; bgImg = null;
 
       try{
         const resp = await fetch('/.netlify/functions/generate', {
@@ -158,29 +153,30 @@
           headers: { 'Content-Type':'application/json' },
           body: JSON.stringify({ topic, style, lang })
         });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data?.error || 'LLM error');
 
-        // поговорка
-        proverbEl.value = (data?.proverb || '').trim();
+        const txt = await resp.text();
+        let data = {};
+        try { data = JSON.parse(txt); } catch(_) {}
+        if (!resp.ok) {
+          const hint = data?.details || txt || 'unknown';
+          throw new Error(hint);
+        }
 
-        // фон-картинка (если пришла)
+        // текст
+        proverbEl.value = (data?.proverb || '').trim().replace(/^["'«»]+|["'«»]+$/g, "");
+
+        // фон
         if (data?.image_url){
-          await new Promise((resolve, reject) => {
-            bgImg = new Image();
-            bgImg.crossOrigin = 'anonymous';
-            bgImg.onload = () => resolve();
-            bgImg.onerror = () => { bgImg = null; resolve(); };
+          await new Promise((resolve) => {
+            bgImg = new Image(); bgImg.crossOrigin = 'anonymous';
+            bgImg.onload = resolve; bgImg.onerror = ()=>{ bgImg=null; resolve(); };
             bgImg.src = data.image_url;
           });
         }
-        drawCard();
-        dlBtn.disabled = false;
-        setMsg('');
+        drawCard(); dlBtn.disabled = false; setMsg('');
       } catch(e){
-        setMsg('Ошибка: ' + e.message + ' — можно вписать поговорку вручную');
-        bgImg = null;
-        drawCard();
+        setMsg('Ошибка: ' + String(e) + '\nМожно вписать поговорку вручную и нажать «Обновить превью».');
+        bgImg = null; drawCard();
       } finally {
         genBtn.disabled = false;
       }
@@ -190,8 +186,7 @@
     refreshBtn.addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
     dlBtn.addEventListener('click', ()=>{
       const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = url; a.download = 'aiproverb.png'; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = 'aiproverb.png'; a.click();
     });
 
     // первичное превью
