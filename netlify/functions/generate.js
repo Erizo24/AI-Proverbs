@@ -1,177 +1,78 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Sohib Ai — генератор поговорок и карточек</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <style>
-    :root { --bg:#0f1115; --panel:#181b22; --text:#e6e9ef; --muted:#9aa3b2; --accent:#22c55e; }
-    *{ box-sizing:border-box } body{ margin:0; background:var(--bg); color:var(--text); font:16px/1.5 Inter, system-ui, Arial }
-    .wrap{ max-width:1000px; margin:32px auto; padding:0 16px }
-    h1{ margin:0 0 16px; font:800 24px Inter, Arial }
-    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
-    .card{ background:var(--panel); border-radius:12px; padding:16px }
-    label{ font-size:12px; color:var(--muted); display:block; margin:8px 0 6px }
-    input,select,button,textarea{ width:100%; border:1px solid #2a2f3a; background:#0f131a; color:var(--text); border-radius:8px; padding:10px 12px; font:inherit }
-    button{ cursor:pointer } button.primary{ background:var(--accent); color:#06150b; border-color:transparent; font-weight:700 }
-    .row{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap }
-    .hint{ color:var(--muted); font-size:12px; margin-top:8px; white-space:pre-wrap }
-    canvas{ width:100%; max-width:480px; height:auto; display:block; background:#000; border-radius:12px }
-    @media (max-width:860px){ .grid{ grid-template-columns:1fr } }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Sohib Ai — генератор поговорок и карточек</h1>
-    <div class="grid">
-      <div class="card">
-        <label>Тема</label>
-        <input id="topic" placeholder="например: кот и робот" autofocus>
+// Ключ Hugging Face хранится как переменная окружения HF_TOKEN (Site settings → Environment variables)
 
-        <label>Стиль</label>
-        <select id="style">
-          <option value="мудрый" selected>мудрый</option>
-          <option value="весёлый">весёлый</option>
-          <option value="поэтичный">поэтичный</option>
-        </select>
-
-        <label>Язык поговорки</label>
-        <select id="lang">
-          <option value="ru" selected>ru — русский</option>
-          <option value="uz">uz — узбекский (латиница)</option>
-          <option value="en">en — english</option>
-        </select>
-
-        <div class="row">
-          <button class="primary" id="gen">Сгенерировать через ИИ</button>
-          <button id="dl" disabled>Скачать PNG</button>
-        </div>
-
-        <div class="hint">
-          Текст генерируется через serverless-функцию (HuggingFace Inference). Ключи не попадают в браузер.
-        </div>
-
-        <label>Поговорка (ручной ввод/правка)</label>
-        <textarea id="proverb" placeholder="сюда можно вставить/исправить текст поговорки"></textarea>
-        <div class="row"><button id="refresh">Обновить превью</button></div>
-
-        <div id="msg" class="hint"></div>
-      </div>
-
-      <div class="card">
-        <canvas id="card" width="1080" height="1350"></canvas>
-        <div class="hint">Формат 1080×1350 (вертикаль для соцсетей)</div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const BRAND = "Sohib Ai";
-
-    const topicEl = document.getElementById('topic');
-    const styleEl = document.getElementById('style');
-    const langEl = document.getElementById('lang');
-    const proverbEl = document.getElementById('proverb');
-    const genBtn = document.getElementById('gen');
-    const dlBtn = document.getElementById('dl');
-    const refreshBtn = document.getElementById('refresh');
-    const msg = document.getElementById('msg');
-
-    const canvas = document.getElementById('card');
-    const ctx = canvas.getContext('2d');
-
-    function setMsg(t){ msg.textContent = t || ""; }
-
-    function gradientBackground(){
-      const W=canvas.width, H=canvas.height;
-      const g = ctx.createLinearGradient(0,0,W,H);
-      g.addColorStop(0, '#0ea5e9'); g.addColorStop(1, '#22c55e');
-      ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 12;
-      ctx.strokeRect(24,24,W-48,H-48);
+exports.handler = async (event) => {
+  try {
+    if (event.httpMethod !== 'POST') {
+      return {
+        statusCode: 405,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Use POST" })
+      };
     }
 
-    function wrapText(ctx, text, maxWidth){
-      const words = text.split(/\s+/);
-      const lines = []; let line = '';
-      for (let i=0;i<words.length;i++){
-        const test = line ? line + ' ' + words[i] : words[i];
-        const w = ctx.measureText(test).width;
-        if (w > maxWidth && i>0){ lines.push(line); line = words[i]; }
-        else line = test;
-      }
-      if (line) lines.push(line);
-      return lines.slice(0,6);
+    const hf = process.env.HF_TOKEN;
+    if (!hf) {
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          error: "Missing HF_TOKEN",
+          context: process.env.CONTEXT || null,
+          branch: process.env.BRANCH || null
+        })
+      };
     }
 
-    function drawCard(){
-      const W = canvas.width, H = canvas.height;
-      const proverb = (proverbEl.value || '').trim();
+    let body = {};
+    try { body = JSON.parse(event.body || "{}"); } catch {}
 
-      gradientBackground();
+    const topic = String(body.topic ?? "плов").slice(0,120);
+    const style = String(body.style ?? "мудрый").slice(0,50);
+    const lang  = String(body.lang  ?? "ru").slice(0,8);
 
-      ctx.fillStyle = '#c2e7ff';
-      ctx.font = '700 48px Inter, Arial';
-      ctx.textAlign = 'center';
-      const topic = (topicEl.value || 'Тема').trim();
-      ctx.fillText(`Тема: ${topic}`, W/2, 140);
+    const prompt =
+`Придумай одну очень короткую народную пословицу.
+Тема: "${topic}". Стиль: "${style}". Язык: ${lang}.
+До 12 слов. Без политики и оскорблений. Верни только пословицу.`;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '800 72px Inter, Arial';
-      const maxWidth = W - 200;
-      const lines = wrapText(ctx, proverb || '…ожидается поговорка…', maxWidth);
-      let y = 360, lineHeight = 90;
-      lines.forEach(line => { ctx.fillText(line, W/2, y); y += lineHeight; });
-
-      ctx.fillStyle = '#9aa3b2';
-      ctx.font = '600 34px Inter, Arial';
-      ctx.fillText(BRAND, W/2, H - 80);
-    }
-
-    async function generate(){
-      const topic = (topicEl.value || 'плов').trim();
-      const style = styleEl.value || 'мудрый';
-      const lang = langEl.value || 'ru';
-      setMsg('Генерация…'); genBtn.disabled = true; dlBtn.disabled = true;
-
-      try{
-        const resp = await fetch('/.netlify/functions/generate', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ topic, style, lang })
-        });
-
-        const txt = await resp.text();
-        let data = {};
-        try { data = JSON.parse(txt); } catch(_) {}
-
-        if (!resp.ok) {
-          const hint = data?.details || txt || 'unknown';
-          throw new Error(hint);
-        }
-
-        const p = (data?.proverb || '').trim().replace(/^["'«»]+|["'«»]+$/g, "");
-        proverbEl.value = p;
-        drawCard();
-        dlBtn.disabled = false; setMsg('');
-      } catch(e){
-        setMsg('Ошибка: ' + String(e) + '\nМожно вписать поговорку вручную и нажать «Обновить превью».');
-        drawCard();
-      } finally {
-        genBtn.disabled = false;
-      }
-    }
-
-    genBtn.addEventListener('click', generate);
-    refreshBtn.addEventListener('click', ()=>{ drawCard(); dlBtn.disabled = false; });
-    document.getElementById('dl').addEventListener('click', ()=>{
-      const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a'); a.href = url; a.download = 'sohib-ai.png'; a.click();
+    const resp = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${hf}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: { max_new_tokens: 32, temperature: 0.9 }
+      })
     });
 
-    gradientBackground(); drawCard();
-  </script>
-</body>
-</html>
+    const txt = await resp.text();
+
+    if (!resp.ok) {
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "HF error", details: txt })
+      };
+    }
+
+    let out;
+    try { out = JSON.parse(txt); } catch { out = txt; }
+    const raw = Array.isArray(out) ? (out[0]?.generated_text || "") : (out?.generated_text || out || "");
+    const proverb = String(raw).split("\n").pop().trim().replace(/^["'«»]+|["'«»]+$/g, "");
+
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proverb })
+    };
+
+  } catch (e) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Server error", details: String(e) })
+    };
+  }
+};
